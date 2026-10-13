@@ -31,6 +31,7 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_BOT_LINK: https://t.me/nadorabotkubot
           GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
       - name: Previous deploy
         run: git fetch origin gh-pages:gh-pages && git worktree add old gh-pages || mkdir -p old
