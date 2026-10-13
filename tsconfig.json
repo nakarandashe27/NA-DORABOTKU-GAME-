@@ -1,4 +1,4 @@
 {
   "files": [],
-  "references": [{ "path": "packages/content-schema" }, { "path": "packages/game" }]
+  "references": [{ "path": "packages/content-schema" }, { "path": "packages/game" }, { "path": "tsconfig.tools.json" }]
 }

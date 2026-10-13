@@ -1,2 +1,3 @@
-// Типы контента, валидатор, слияние и миграции сейва — этапы 6 и 9 roadmap.
-export const SAVE_VERSION = 1;
+// Общий пакет: сейв (здесь), позже — типы контента и валидатор (этап 9). Импортируется игрой и будущим сервером.
+export { SAVE_VERSION, SaveTooNewError, checksum, mergeSaves, migrate, newSave } from './save';
+export type { Save } from './save';
