@@ -10,10 +10,14 @@ import type { Platform, ViewportInfo } from '../platform/types';
 import { boot } from './boot';
 import { createRenderHost } from './render-host';
 import { loadSave, writeSave } from './save-store';
+import { createOffice, drawOffice, stepOffice, tapOffice } from './scenes/office';
 import { blit, stubSheet } from './stub-sheet';
 
 const BOT_LINK = import.meta.env.VITE_BOT_LINK ?? '';
 const params = new URLSearchParams(location.search);
+/** office — look-dev сцена (по умолчанию); sheet — лист-заглушка скелета. ?dev — строка статуса. */
+const SCENE = params.get('scene') === 'sheet' ? 'sheet' : 'office';
+const DEV = params.has('dev') || SCENE === 'sheet';
 
 async function pickPlatform(): Promise<Platform> {
   if (!isTelegramLaunch(location.hash, location.search)) return createBrowserPlatform();
@@ -56,9 +60,14 @@ async function main(): Promise<void> {
     render();
   };
   let zoom = 0;
+  // В офисе «лист» — это весь экран: камера не панится.
+  const worldSize = (v: ViewportInfo) => (SCENE === 'office' ? [Math.ceil(v.width), Math.ceil(v.height)] : [sheet.cols, sheet.rows]);
   let view: Viewport = createViewport(1, 1, 1, sheet.cols, sheet.rows);
+  let office = createOffice(1, 1);
   const setSize = (v: ViewportInfo) => {
-    view = createViewport(v.width, v.height, v.dpr, sheet.cols, sheet.rows, zoom);
+    const [wc, wr] = worldSize(v);
+    view = createViewport(v.width, v.height, v.dpr, wc ?? 1, wr ?? 1, zoom);
+    if (SCENE === 'office') office = createOffice(view.cols, view.rows);
     host.resize(view.pxW, view.pxH, view.cellW, view.cellH);
     render();
   };
@@ -75,13 +84,15 @@ async function main(): Promise<void> {
     const col0 = Math.floor(view.panX / view.cellW);
     const row0 = Math.floor(view.panY / view.cellH);
     if (frame.cols !== view.cols + 1 || frame.rows !== view.rows + 1) frame = createBuffer(view.cols + 1, view.rows + 1);
-    blit(sheet, frame, col0, row0);
+    if (SCENE === 'office') drawOffice(frame, office, clock);
+    else blit(sheet, frame, col0, row0);
+    if (!DEV) return host.draw(frame, view.panX - col0 * view.cellW, view.panY - row0 * view.cellH);
     // ponytail: строка статуса поверх листа — уходит, когда появится UI листа (этап 11).
     const sound = audio.state === 'running' ? 'звук' : 'звук выкл';
     const info = `${status} · ${host.kind} · ${sound} · сейв r${save.rev} · клетка ${view.cellW}×${view.cellH}px`;
     // Переносим по словам — на узком экране (iPhone) статус не обрезается.
     const lines = wrap(info, Math.max(8, view.cols - 2));
-    lines.forEach((line, i) => putText(frame, 0, view.rows - lines.length + i, ` ${line}`.padEnd(frame.cols), 0, 8));
+    lines.forEach((line, i) => putText(frame, 0, view.rows - lines.length + i, ` ${line}`.padEnd(frame.cols), 0x0b0d12, 0x9fd29f));
     host.draw(frame, view.panX - col0 * view.cellW, view.panY - row0 * view.cellH);
   }
 
@@ -94,14 +105,17 @@ async function main(): Promise<void> {
     const dx = e.clientX - drag.x;
     const dy = e.clientY - drag.y;
     drag = { x: e.clientX, y: e.clientY, moved: drag.moved + Math.abs(dx) + Math.abs(dy) };
-    view = pan(view, dx, dy);
-    render();
+    if (SCENE === 'sheet') {
+      view = pan(view, dx, dy);
+      render();
+    }
   });
   window.addEventListener('pointerup', (e) => {
     if (drag && drag.moved <= 8) {
       const r = canvas().getBoundingClientRect();
       const c = screenToCell(e.clientX - r.left, e.clientY - r.top, view);
       status = c ? `тап: ${c.col}:${c.row}` : 'тап мимо листа';
+      if (c && SCENE === 'office') tapOffice(office, c.col, c.row, view.cols, view.rows);
       render();
     }
     drag = null;
@@ -113,11 +127,35 @@ async function main(): Promise<void> {
     render();
   });
 
-  platform.lifecycle(() => {
-    audio.pause();
-    void persist();
-  }, render);
+  // Анимация офиса: время только из накопленного dt (≤ 100 мс за кадр), пауза — когда приложение свернуто.
+  let clock = 0;
+  let last = 0;
+  let paused = false;
+  const tick = (now: number) => {
+    const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
+    last = now;
+    clock += dt;
+    stepOffice(office, dt);
+    render();
+    if (!paused) requestAnimationFrame(tick);
+  };
+
+  platform.lifecycle(
+    () => {
+      paused = true;
+      audio.pause();
+      void persist();
+    },
+    () => {
+      if (paused && SCENE === 'office') {
+        paused = false;
+        last = 0;
+        requestAnimationFrame(tick);
+      } else render();
+    },
+  );
   setSize(platform.viewport(setSize));
+  if (SCENE === 'office') requestAnimationFrame(tick);
 }
 
 void main().catch((err: unknown) => {

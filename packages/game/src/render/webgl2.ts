@@ -1,11 +1,12 @@
 import { buildAtlas, type Atlas } from './atlas';
-import { PALETTE, type CellBuffer } from './cells';
+import { BG, type CellBuffer } from './cells';
 import type { Renderer } from './types';
 
-// Одна клетка = один инстанс квада; квад строится из gl_VertexID, данные клетки упакованы в uint:
-// glyph (16 бит) | fg (8 бит) << 16 | bg (8 бит) << 24. Глиф читается texelFetch — пиксель в пиксель с атласом.
+// Одна клетка = один инстанс квада; квад строится из gl_VertexID. Данные клетки — два uint:
+// a_fg = glyph (8 бит) << 24 | rgb символа; a_bg = rgb фона. Глиф читается texelFetch — пиксель в пиксель с атласом.
 const VS = `#version 300 es
-layout(location = 0) in uint a_cell;
+layout(location = 0) in uint a_fg;
+layout(location = 1) in uint a_bg;
 uniform vec2 u_res;
 uniform vec2 u_cell;
 uniform vec2 u_off;
@@ -13,45 +14,38 @@ uniform int u_cols;
 uniform int u_perRow;
 out vec2 v_local;
 flat out ivec2 v_origin;
-flat out uint v_fg;
-flat out uint v_bg;
+flat out vec3 v_fg;
+flat out vec3 v_bg;
+vec3 unpack(uint c) {
+  return vec3(float((c >> 16) & 0xFFu), float((c >> 8) & 0xFFu), float(c & 0xFFu)) / 255.0;
+}
 void main() {
   vec2 corner = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
   ivec2 cell = ivec2(gl_InstanceID % u_cols, gl_InstanceID / u_cols);
   vec2 px = (vec2(cell) + corner) * u_cell - u_off;
   gl_Position = vec4(px / u_res * 2.0 - 1.0, 0.0, 1.0);
   gl_Position.y = -gl_Position.y;
-  int glyph = int(a_cell & 0xFFFFu);
+  int glyph = int(a_fg >> 24);
   v_origin = ivec2(glyph % u_perRow, glyph / u_perRow) * ivec2(u_cell);
   v_local = corner * u_cell;
-  v_fg = (a_cell >> 16) & 0xFFu;
-  v_bg = (a_cell >> 24) & 0xFFu;
+  v_fg = unpack(a_fg);
+  v_bg = unpack(a_bg);
 }`;
 
 const FS = `#version 300 es
 precision highp float;
 uniform sampler2D u_atlas;
-uniform vec4 u_palette[16];
 uniform vec2 u_cell;
 in vec2 v_local;
 flat in ivec2 v_origin;
-flat in uint v_fg;
-flat in uint v_bg;
+flat in vec3 v_fg;
+flat in vec3 v_bg;
 out vec4 color;
 void main() {
   ivec2 p = v_origin + ivec2(min(floor(v_local), u_cell - 1.0));
   float a = texelFetch(u_atlas, p, 0).a;
-  color = mix(u_palette[v_bg], u_palette[v_fg], a);
+  color = vec4(mix(v_bg, v_fg, a), 1.0);
 }`;
-
-function paletteRgba(): Float32Array {
-  const out = new Float32Array(16 * 4);
-  PALETTE.forEach((hex, i) => {
-    const n = parseInt(hex.slice(1), 16);
-    out.set([((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1], i * 4);
-  });
-  return out;
-}
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const s = gl.createShader(type);
@@ -98,15 +92,16 @@ export function createWebGL2Renderer(
     const cells = gl.createBuffer();
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, cells);
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribIPointer(0, 1, gl.UNSIGNED_INT, 0, 0);
-    gl.vertexAttribDivisor(0, 1);
+    for (const loc of [0, 1]) {
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribIPointer(loc, 1, gl.UNSIGNED_INT, 8, loc * 4);
+      gl.vertexAttribDivisor(loc, 1);
+    }
     const tex = gl.createTexture();
     const u = Object.fromEntries(
-      ['u_res', 'u_cell', 'u_off', 'u_cols', 'u_perRow', 'u_atlas', 'u_palette'].map((n) => [n, gl.getUniformLocation(prog, n)]),
+      ['u_res', 'u_cell', 'u_off', 'u_cols', 'u_perRow', 'u_atlas'].map((n) => [n, gl.getUniformLocation(prog, n)]),
     );
     gl.useProgram(prog);
-    gl.uniform4fv(u['u_palette'] ?? null, paletteRgba());
     gl.uniform1i(u['u_atlas'] ?? null, 0);
     return { prog, vao, cells, tex, u };
   };
@@ -136,12 +131,13 @@ export function createWebGL2Renderer(
       last = { buf, offX, offY };
       if (!st || !atlas || gl.isContextLost()) return;
       const n = buf.cols * buf.rows;
-      if (packed.length !== n) packed = new Uint32Array(n);
+      if (packed.length !== n * 2) packed = new Uint32Array(n * 2);
       for (let i = 0; i < n; i++) {
-        packed[i] = ((buf.glyph[i] ?? 0) | ((buf.fg[i] ?? 0) << 16) | ((buf.bg[i] ?? 0) << 24)) >>> 0;
+        packed[i * 2] = (((buf.glyph[i] ?? 0) << 24) | ((buf.fg[i] ?? 0) & 0xffffff)) >>> 0;
+        packed[i * 2 + 1] = buf.bg[i] ?? BG;
       }
       gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.clearColor(...(Array.from(paletteRgba().subarray(0, 4)) as [number, number, number, number]));
+      gl.clearColor(((BG >> 16) & 255) / 255, ((BG >> 8) & 255) / 255, (BG & 255) / 255, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.useProgram(st.prog);
       gl.bindVertexArray(st.vao);

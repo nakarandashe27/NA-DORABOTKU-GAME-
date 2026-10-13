@@ -6,6 +6,8 @@ export interface Atlas {
   perRow: number;
   cellW: number;
   cellH: number;
+  /** CSS-строка шрифта — Canvas2D-бэкенд рисует ею же. */
+  font: string;
 }
 
 // ponytail: системный моноширинный шрифт через fillText; свой bitmap-шрифт с кириллицей — когда тест читаемости
@@ -23,7 +25,8 @@ export function buildAtlas(cellW: number, cellH: number): Atlas {
   if (!ctx) throw new Error('Canvas2D недоступен — атлас не собрать');
 
   const fontPx = Math.floor(Math.min(cellH * 0.8, cellW / 0.62));
-  ctx.font = `${fontPx}px ${FONT_FAMILY}`;
+  const font = `${fontPx}px ${FONT_FAMILY}`;
+  ctx.font = font;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#fff';
@@ -44,5 +47,5 @@ export function buildAtlas(cellW: number, cellH: number): Atlas {
       ctx.restore();
     }
   });
-  return { canvas, perRow, cellW, cellH };
+  return { canvas, perRow, cellW, cellH, font };
 }

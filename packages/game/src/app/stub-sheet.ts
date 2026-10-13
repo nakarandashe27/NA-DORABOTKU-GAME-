@@ -1,4 +1,4 @@
-import { createBuffer, putText, type CellBuffer } from '../render/cells';
+import { BG, createBuffer, putText, type CellBuffer } from '../render/cells';
 
 // ponytail: лист-заглушка скелета для теста читаемости; настоящие листы приходят из контента на этапе 9.
 const ART = String.raw`
@@ -23,14 +23,16 @@ const ART = String.raw`
 └────────────────────────────────────────┴─────────────────────────────────────┘
 `;
 
-const COLOR: Record<string, number> = { '▓': 2, '║': 10, '═': 10, '╔': 10, '╗': 10, '╚': 10, '╝': 10 };
+const BLUE = 0x2a4a7a;
+const LIGHT = 0x6fa8ff;
+const COLOR: Record<string, number> = { '▓': 0x3a4252, '║': LIGHT, '═': LIGHT, '╔': LIGHT, '╗': LIGHT, '╚': LIGHT, '╝': LIGHT };
 
 export function stubSheet(): CellBuffer {
   const lines = ART.split('\n').filter((l) => l.length > 0);
   const cols = Math.max(...lines.map((l) => [...l].length)) + 4;
   const buf = createBuffer(cols, lines.length + 4);
   lines.forEach((line, r) => {
-    [...line].forEach((ch, c) => putText(buf, c + 2, r + 2, ch, COLOR[ch] ?? (ch === 'W' || ch === 'C' ? 14 : 9)));
+    [...line].forEach((ch, c) => putText(buf, c + 2, r + 2, ch, COLOR[ch] ?? (ch === 'W' || ch === 'C' ? 0xff5a5f : BLUE)));
   });
   return buf;
 }
@@ -38,7 +40,7 @@ export function stubSheet(): CellBuffer {
 /** Копирует окно src начиная с (col, row) в dst; за краем — пусто. */
 export function blit(src: CellBuffer, dst: CellBuffer, col: number, row: number): void {
   dst.glyph.fill(0);
-  dst.bg.fill(0);
+  dst.bg.fill(BG);
   for (let r = 0; r < dst.rows; r++) {
     const sr = row + r;
     if (sr < 0 || sr >= src.rows) continue;
@@ -48,8 +50,8 @@ export function blit(src: CellBuffer, dst: CellBuffer, col: number, row: number)
       const si = sr * src.cols + sc;
       const di = r * dst.cols + c;
       dst.glyph[di] = src.glyph[si] ?? 0;
-      dst.fg[di] = src.fg[si] ?? 4;
-      dst.bg[di] = src.bg[si] ?? 0;
+      dst.fg[di] = src.fg[si] ?? 0;
+      dst.bg[di] = src.bg[si] ?? BG;
     }
   }
 }
