@@ -1,6 +1,7 @@
 import { createWebAudio } from '../audio/audio';
 import { gameInfo } from '../core/version';
 import { createViewport, pan, screenToCell, zoomAt, type Viewport } from '../layout/grid';
+import { wrap } from '../layout/wrap';
 import { createBuffer, putText } from '../render/cells';
 import { createBrowserPlatform } from '../platform/browser';
 import { isTelegramLaunch } from '../platform/detect';
@@ -77,7 +78,10 @@ async function main(): Promise<void> {
     blit(sheet, frame, col0, row0);
     // ponytail: строка статуса поверх листа — уходит, когда появится UI листа (этап 11).
     const sound = audio.state === 'running' ? 'звук' : 'звук выкл';
-    putText(frame, 0, frame.rows - 2, ` ${status} · ${host.kind} · ${sound} · сейв r${save.rev} · клетка ${view.cellW}×${view.cellH}px `.padEnd(frame.cols), 0, 8);
+    const info = `${status} · ${host.kind} · ${sound} · сейв r${save.rev} · клетка ${view.cellW}×${view.cellH}px`;
+    // Переносим по словам — на узком экране (iPhone) статус не обрезается.
+    const lines = wrap(info, Math.max(8, view.cols - 2));
+    lines.forEach((line, i) => putText(frame, 0, view.rows - lines.length + i, ` ${line}`.padEnd(frame.cols), 0, 8));
     host.draw(frame, view.panX - col0 * view.cellW, view.panY - row0 * view.cellH);
   }
 
