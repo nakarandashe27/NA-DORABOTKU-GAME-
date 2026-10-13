@@ -116,4 +116,11 @@ async function main(): Promise<void> {
   setSize(platform.viewport(setSize));
 }
 
-void main();
+void main().catch((err: unknown) => {
+  console.error(err);
+  document.body.innerHTML = '';
+  const p = document.createElement('pre');
+  p.style.cssText = 'font:14px monospace;color:#c8d0c0;padding:24px;white-space:pre-wrap';
+  p.textContent = `НА ДОРАБОТКУ: игра не запустилась.\nСборка ${__BUILD__}\n\n${String(err)}`;
+  document.body.append(p);
+});
