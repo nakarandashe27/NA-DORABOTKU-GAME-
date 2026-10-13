@@ -1,0 +1,73 @@
+# Методики и паттерны аналогов
+
+Дата проверки: 2026-10-13. Пометки: `[непроверено]`, `[вывод]` — наша интерпретация. Где паттерн применим к нам — см. [что украсть](what-to-steal.md); обзор раздела — [README](README.md).
+
+## 1. Дизайн рутины (Papers-likes и соседи)
+
+- **Накопление правил.** В Papers, Please дневные требования к документам растут. Поуп вручную выстраивал расписание событий и правил: добавление одной встречи или правила ломало всё последующее. Новое правило он не объявлял в утреннем бюллетене в дни, когда с игроком говорит охранник или начальник, потому что бюллетень игнорируют. источник: https://en.wikipedia.org/wiki/Papers,_Please (проверено 2026-10-13); источник: https://www.gamedeveloper.com/design/designing-the-bleak-genius-of-i-papers-please-i- (проверено 2026-10-13). [вывод] правило надо подавать там, где игрок точно его увидит.
+- **Бюрократия как естественный генератор правил.** Поуп: «The bureaucratic structure is something that fits naturally» — правила легко превращаются в проверяемые условия. источник: https://www.gamedeveloper.com/design/designing-the-bleak-genius-of-i-papers-please-i- (проверено 2026-10-13).
+- **Случайные лица и имена поверх сценарных персонажей** — свежесть без переписывания диалогов (там же).
+- **Мета-слой поверх рутины («вторая игра»).** Papers, Please: деньги и семья (штраф режет зарплату). Not Tonight: социальный рейтинг, взятки против рейтинга, 0 = депортация. Death and Taxes: можно игнорировать инструкции босса, деньги идут на кастомизацию рабочего места. Hypnospace Outlaw: HypnoCoin на рабочий стол, программы и питомцев. источники: [Papers, Please](https://en.wikipedia.org/wiki/Papers,_Please), [Not Tonight](https://en.wikipedia.org/wiki/Not_Tonight_(video_game)), [Death and Taxes](https://en.wikipedia.org/wiki/Death_and_Taxes_(video_game)), [Hypnospace Outlaw](https://en.wikipedia.org/wiki/Hypnospace_Outlaw) (все проверено 2026-10-13).
+- **Ограниченные инструменты проверки.** Lil' Guardsman: 3 action points на допрос, советника или инструмент. Papers, Please: допрос, отпечатки, скан. источник: https://en.wikipedia.org/wiki/Lil%27_Guardsman (проверено 2026-10-13). [вывод] сверка не только «глазами», но и выбор ограниченных проверок.
+- **Дрейф жанра.** Dead Letter Dept.: набор текста плавно превращается в хоррор-пазл, офис «ломается». Hypnospace: пастиш интерфейса Win9x. источник: https://en.wikipedia.org/wiki/Dead_Letter_Dept._(video_game) (проверено 2026-10-13).
+- **Опция «сделать плохо».** Good Job!: задачу можно решить разрушением, оценка по времени и ущербу. источник: https://en.wikipedia.org/wiki/Good_Job!_(video_game) (проверено 2026-10-13).
+- **Ограничение сессии реальным временем.** Papers, Please: смена ограничена реальным временем; Lil' Guardsman: ограниченные повторы смены. источник: https://en.wikipedia.org/wiki/Papers,_Please (проверено 2026-10-13).
+
+## 2. Мета-слой «голоса и диалоги внутри процесса»
+
+В исходных отчётах нет разбора механики диалогов Disco Elysium, поэтому здесь только то, что следует из найденного.
+- [вывод] «Голоса-навыки» из [вдохновения](../01-idea/inspiration.md) совпадают по роли с action points Lil' Guardsman, если каждый голос даёт проверяемую зацепку, а не бесплатную подсказку; это ответ на жалобу «успех как угадайка».
+- Сюжет, вынесенный в «побочку между задачами» (Not Tonight), получает упрёк; сюжет внутри процесса проверки у Papers, Please работает (там же и [Wikipedia](https://en.wikipedia.org/wiki/Not_Tonight_(video_game)), проверено 2026-10-13). [вывод].
+
+## 3. ASCII-рендер: подходы
+
+Ключевое различие [вывод]: у нас 2D тайловая игра. Игра сразу пишет в сетку ячеек (глиф, цвет текста, цвет фона, яркость), рендер только рисует сетку. Это дешевле любых «картинка → ASCII» пайплайнов, которые нужны лишь для 3D и постэффектов.
+
+| Подход | Суть | Оценка для мобильного WebView |
+|---|---|---|
+| Яркость → рампа символов (three.js AsciiEffect) | индекс в строке `' .:-=+*#%@'`; `getImageData` + вывод в DOM; цветной режим «renders more slowly» | плохо: readback GPU→CPU и DOM каждый кадр; только демо [вывод]. источник: https://github.com/mrdoob/three.js/blob/dev/examples/jsm/effects/AsciiEffect.js (проверено 2026-10-13) |
+| Sobel-направление → `\| - / \` (Acerola и реплики) | яркость + детекция границ; как угол превращается в символ — в проверенных страницах не описано | в шейдере дёшево [вывод], для 2D-игры не нужно. источник: https://modrinth.com/shader/K5CUBBea ; https://godotshaders.com/shader/ascii-shader/ (проверено 2026-10-13) |
+| Shape-matching (Harri) | символ = вектор покрытия шестью кругами, ближайший по Евклиду; CPU-прототип давал одноцифровые FPS на iPhone, 6 шейдерных проходов — «many times more performant» | только GPU, для нас избыточно (глифы выбираем сами) [вывод]. источник: https://alexharri.com/blog/ascii-rendering (проверено 2026-10-13) |
+| DOM-текст (`<pre>`/span) | — | не рекомендован для живой сетки 5-10 тыс. ячеек с покадровым обновлением [вывод] |
+| Canvas2D `fillText` | единственный найденный бенчмарк: ~120K ops/s на Chrome Mobile 138 для одного символа — почти ничего не доказывает | запасной вариант. источники: https://docs.skia.org/docs/dev/design/text_c2d/ ; https://www.measurethat.net/Benchmarks/Show/34747/1/canvas-filltext-stroketext (проверено 2026-10-13) |
+| Canvas2D + предрендеренный атлас (`drawImage`) | компромисс, работает везде; окраска каждого глифа в свой цвет неудобна | fallback [вывод] |
+| **WebGL2 instanced quads + атлас** | один draw call на всю сетку, цвет/яркость/анимация в шейдере; так делают xterm.js (WebGL addon) и textmode.js; Oni: бенчмарк 22 с → 2 с (причина не изолирована) | **рекомендуемый**. источники: https://github.com/xtermjs/xterm.js ; https://github.com/humanbydefinition/textmode.js ; https://github.com/onivim/oni/pull/2120 (проверено 2026-10-13) |
+| WebGPU | 87,82% глобально, но iOS Safari только с 26.0; Android WebView — данных нет | не ставить. источник: https://caniuse.com/webgpu (проверено 2026-10-13) |
+
+WebGL2: 97,13% глобально, iOS Safari с 15; WebGL1 как fallback. источник: https://caniuse.com/webgl2 (проверено 2026-10-13).
+
+**Бюджет [вывод, требует замера на устройстве].** Поле 100×56 = 5600 ячеек, по ~16-24 байта на instance; обновление буфера ~100 КБ за кадр. Узкое место — не отрисовка, а CPU-логика анимации (трава, вода) и GC. Анимацию глифов во времени, затемнение по глубине и отражение лучше делать в шейдере.
+
+**Приёмы «богатого» вида [вывод], ложатся на пайплайн:** глиф из таблицы по фазе `(x, y, t)` и цвет с шумом (трава `/ | \`); глифы `~ ( )` по sin-шуму и отражение как зеркальная выборка ячеек с коэффициентом яркости и сдвигом по x (вода); рампа плотности по освещённости (камень `@#8QW`); глубина как множитель яркости или смешение с фоном.
+
+**Что делает ASCII «богатым» у игр.** Stone Story RPG: покадровая ручная анимация + шейдеры. Cogmind: плотность частиц и анимаций. Asciicker: цвет на глиф, отражения воды. источник: https://en.wikipedia.org/wiki/Stone_Story_RPG ; https://www.gridsagegames.com/cogmind/ ; https://hackaday.com/2020/01/01/explore-this-3d-world-rendered-in-ascii-art/ (проверено 2026-10-13). Для чертежа [вывод] это значит: линии чертежа рисуются вручную как «покадровый» арт, а не конвертируются.
+
+**Рекомендация исследования (стек).** Свой тонкий WebGL2-рендерер сетки глифов (instanced quads + атлас), fallback Canvas2D с атласом; textmode.js как прототип на 1-2 дня (исходники закрыты, 172 звезды, v0.x); rot.js только как набор алгоритмов; не использовать DOM-вывод, WebGPU, `getImageData`. источник: https://github.com/humanbydefinition/textmode.js (проверено 2026-10-13); https://github.com/ondras/rot.js (проверено 2026-10-13).
+
+**Первые шаги проверки риска (1 день).** Прототип сетки 100×56 с тремя типами анимации; открыть в Telegram на реальном mid-range Android через `chrome://inspect`, записать frame time; проверить `performance_class` в User-Agent; проверить fullscreen, safe area и `disableVerticalSwipes`.
+
+## 4. Telegram: техника, удержание, вирусность
+
+- **Класс производительности.** Android User-Agent содержит `Telegram-Android/{app_version} ({manufacturer} {model}; Android {ver}; SDK {sdk}; {performance_class})`, класс `LOW`/`AVERAGE`/`HIGH`; Telegram рекомендует по нему снижать анимации. Готовый переключатель качества (размер сетки, частота анимации воды) [вывод]. источник: https://core.telegram.org/bots/webapps (проверено 2026-10-13).
+- **Среда.** Mini App в WebView клиента; на Android — системный `android.webkit.WebView` [вывод по коду клиента]; iOS — WebKit, конкретно WKWebView [непроверено]. Минимальная версия WebView, лимиты памяти и GPU, OffscreenCanvas в WebView — не найдены [непроверено]. источник: https://docs.telegram-mini-apps.com/platform/about ; https://github.com/DrKLO/Telegram/blob/master/TMessagesProj/src/main/java/org/telegram/ui/web/BotWebViewContainer.java (проверено 2026-10-13).
+- **Экран и жесты.** `viewportStableHeight`, `expand()`, `requestFullscreen()` и `lockOrientation()` (Bot API 8.0+), `safeAreaInset` и `contentSafeAreaInset`; `disableVerticalSwipes()` (7.7+) против сворачивания свайпом; `enableClosingConfirmation()` защищает прогресс. источник: https://core.telegram.org/bots/webapps (проверено 2026-10-13).
+- **Вирусность и возврат (механики платформы, не экономика).** `savePreparedInlineMessage` + `WebApp.shareMessage` (Bot API 8.0): карточка с кнопкой запуска в выбранные чаты; `shareToStory` (7.8); deep link `https://t.me/botusername/appname?startapp=<param>` → `start_param`; Main Mini App через @BotFather; `addToHomeScreen` (8.0); haptic feedback (6.1). Допустимые символы и длина `start_param` в документации не указаны. источник: https://core.telegram.org/bots/webapps (проверено 2026-10-13).
+- **Хранилище.** CloudStorage (6.9): 1024 ключа, значение до 4096 символов; DeviceStorage до 5 МБ, SecureStorage до 10 элементов (9.0). Для сейвов квеста достаточно; кэш атласа лучше хранить в обычном HTTP-кэше [вывод]. источник: тот же.
+- **Уроки удержания.** Чат-нативные рефералы и запуск в один клик сработали как механика; игры, лишённые содержания, обвалились. источник: https://blog.aelf.com/posts/lessons-for-telegram-mini-app-tap-to-earn-games (проверено 2026-10-13) [вендорский блог, оценочное мнение]. Живут групповые и словесные игры «в чате» [вывод] — источник: https://vc.ru/telegram/2917931-igry-v-telegram (проверено 2026-10-13).
+- **Бенчмарки удержания.** По TMA ~15-20% D1 и 8-10% D7 (Monetag, вендорский блог без методики) — слабый источник, не использовать как цель. Мобильные игры вообще (GameAnalytics 2026, пересказ): медианы ~22% D1, ~4% D7, ~0,7% D30; топ-10% ~40% / 12% / 4%. K-factor для TMA не найден. источники: https://monetag.com/blog/telegram-mini-app-metrics/ ; https://investgame.net/wp-content/uploads/2026/01/2026-01-20-Mobile_retention_benchmarks_2026.pdf (проверено 2026-10-13). [вывод] гипотеза «D1 ≥ 25%» из [метрик MVP](../04-mvp/success-metrics.md) лежит между медианой и топ-10% по общим мобильным играм.
+- **Монетизация.** Только Stars (`XTR`) для цифровых товаров; на старте можно без неё. источник: https://core.telegram.org/bots/payments-stars (проверено 2026-10-13).
+- **Безопасность.** Серверная валидация `initData` (HMAC по токену бота) обязательна. Из Bot API 10.2: вызовы методов Mini App блокируются при вызове из иных origin (авто-включено 20.07.2026, отключается в @BotFather). источник: https://core.telegram.org/bots/api-changelog (проверено 2026-10-13).
+
+## 5. Сатира без проповеди
+
+- **Тема возникает из повторения.** Papers, Please: механика проверки построена раньше сюжета; игрок соучастник системы; моральные выборы стоят игроку денег семьи; интерфейс сухой, эмоции не подсказываются; прямые политические отсылки убраны. источник: https://en.wikipedia.org/wiki/Papers,_Please (проверено 2026-10-13).
+- **Критика через юмор и ломку правил.** Stanley Parable: критика приказов без тезиса; скучные задачи становятся интересными, когда их не «должен» делать. источник: https://en.wikipedia.org/wiki/The_Stanley_Parable (проверено 2026-10-13).
+- **Комедия на непонимании.** Job Simulator: роботы не понимают человеческий труд; обозреватели не находят социального комментария. источник: https://www.uploadvr.com/job-simulator-review-making-the-mundane-magical/ (проверено 2026-10-13).
+- **Контраст милого и жёсткого и граница проповеди.** Cat Secretary: контраст хвалят, сатиру местами называют «в лоб». источник: https://gamingtrend.com/previews/cat-secretary-hands-on-preview/ (проверено 2026-10-13).
+- **Структура вместо лекции.** Wanderstop: тема через структуру игры (нет шкалы выносливости, нет победы), но монотонность — реальный риск. Mouthwashing: почти без юмора. источники: https://en.wikipedia.org/wiki/Wanderstop ; https://gameinformer.com/review/mouthwashing/no-one-can-hear-you-scream (проверено 2026-10-13).
+- **Ошибки ИИ как правдоподобная бессмыслица.** Паттерн из реальных кейсов: сверху связно, по логике бессмысленно; починка одной ошибки порождает новую (RoomSketcher: нет входной двери, ванная загорожена, после «исправления» появилась комната без дверей). Veras: «лестницы Пенроуза», визуально впечатляющие, но невозможные (ACADIA 2023). источник: https://www.roomsketcher.com/?p=22708 ; https://arxiv.org/pdf/2308.00227 (проверено 2026-10-13).
+- **Разрыв «воспринимаемая скорость / реальное качество».** METR (июль 2025): разработчики с ИИ на 19% медленнее, считали, что быстрее на ~20%. Klarna (май 2025): ИИ дешевле, но «lower quality», вернули людей. McDonald's завершил тест ИИ-драйв-тру (июнь 2024). источники: https://www.theregister.com/2025/07/11/ai_code_tools_slow_down/ ; https://www.entrepreneur.com/business-news/klarna-ceo-reverses-course-by-hiring-more-humans-not-ai/491396 ; https://www.restaurantonline.co.uk/Article/2024/06/19/McDonald-s-ends-AI-drive-thru-trial-in-US-after-order-mistakes (проверено 2026-10-13).
+- **Фон для драмы джунов.** RIBA 2026: 61% согласны, что ИИ усложнит джунам получение навыков; доля практик с ИИ 41% (2024) → 59% (2025) → у 74% на большинстве проектов (2026). AJ: ~2600 заявок на 9 мест Part 1 в одном бюро (колонка Klor, дата не указана). источники: https://www.riba.org/news/second-riba-ai-report-shows-surge-in-usage-among-uk-architects/ ; https://www.riba.org/news/ai-adoption-reaches-tipping-point-across-uk-architecture/ ; https://10design.co/idea/sabrina-klor-architects-journal (проверено 2026-10-13).
+- **Лексикон «выдуманной корпорации».** «Конторка»: готовый паттерн мрачного корпоративного абсурда с собственным жаргоном (Хозяин, кукиши, отдел квадров). Копировать лор нельзя (IP автора @ooo_slop), переносить можно только приём. источник: https://postium.ru/mem-kontorka/ (проверено 2026-10-13).
+
+## Черновик

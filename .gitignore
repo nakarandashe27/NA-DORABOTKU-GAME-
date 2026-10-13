@@ -1,0 +1,12 @@
+# Референс-видео: чужой контент, не публикуем
+*.MP4
+*.mp4
+
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+.DS_Store
+Thumbs.db
+*.log
