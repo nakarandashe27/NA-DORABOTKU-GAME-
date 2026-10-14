@@ -4,9 +4,13 @@
 // Масштаб: S = cols / 55 — сколько мелких клеток на одну «дизайн-клетку»; формы и шумы считаются в дизайн-
 // координатах (col / S), поэтому при любой плотности картинка та же, только детальнее.
 // ponytail: монолит одной функцией — пока ищем вид. Когда вид утвердим, разнесём: состояние в core, слои в render.
-import { BG, glyphIndex, type CellBuffer } from '../../render/cells';
+import { glyphIndex, type CellBuffer } from '../../render/cells';
+import { FIGURE_HEIGHT, FIGURE_SCALE, drawIntern } from './intern';
+import { glowBg, hash, mul, pack, smooth, type RGB } from './shade';
 
 const DESIGN_COLS = 55;
+/** Радиус лужи в дизайн-клетках. */
+const PUDDLE_R = 10;
 
 export interface OfficeState {
   /** Позиция стажёра (ноги) и цель ходьбы — в клетках экрана. */
@@ -26,7 +30,11 @@ export interface OfficeLabels {
 }
 
 export function createOffice(cols: number, rows: number): OfficeState {
-  return { x: cols * 0.45, y: rows * 0.74, tx: cols * 0.45, ty: rows * 0.74, walk: 0, say: 'Тапни — пойду туда.' };
+  // Стоит у края лужи — отражение видно сразу.
+  const L = layout(cols, rows);
+  const x = L.puddle.x - 2 * L.S;
+  const y = L.puddle.y - (4 * L.S) / 1.8;
+  return { x, y, tx: x, ty: y, walk: 0, say: 'Тапни — пойду туда.' };
 }
 
 /** Клетка — тап → цель. Тап по столу — подходит к стулу и говорит. */
@@ -58,40 +66,8 @@ export function stepOffice(s: OfficeState, dt: number, cols: number): void {
   s.walk += dt;
 }
 
-// ── шум и цвет ────────────────────────────────────────────────────────────────
-
-function hash(x: number, y: number, s = 0): number {
-  let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-function smooth(x: number, y: number): number {
-  const xi = Math.floor(x);
-  const yi = Math.floor(y);
-  const fx = x - xi;
-  const fy = y - yi;
-  const u = fx * fx * (3 - 2 * fx);
-  const v = fy * fy * (3 - 2 * fy);
-  const a = hash(xi, yi);
-  const b = hash(xi + 1, yi);
-  const c = hash(xi, yi + 1);
-  const d = hash(xi + 1, yi + 1);
-  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-}
-
-type RGB = [number, number, number];
-const hexRgb = (h: number): RGB => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
-const pack = (c: RGB) => {
-  const k = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)));
-  return (k(c[0]) << 16) | (k(c[1]) << 8) | k(c[2]);
-};
-const BG_RGB = hexRgb(BG);
-const mul = (c: RGB, k: number): RGB => [c[0] * k, c[1] * k, c[2] * k];
-
 const RAMP = [...' .`\',:;-~=+*xo#%&@'].map(glyphIndex);
 const SOFT = [...' ..,,::;;~'].map(glyphIndex);
-const FIGURE = [...'.:-=+*#%&@'].map(glyphIndex);
 const G = (ch: string) => glyphIndex(ch);
 
 // ── планировка от размера экрана ────────────────────────────────────────────
@@ -129,7 +105,8 @@ function layout(cols: number, rows: number) {
     },
     plant: { x: Math.round(cols * 0.86), y: Math.round(rows * 0.88) },
     cooler: { x: Math.round(cols * 0.9), y: wallH + planterH },
-    puddle: { x: Math.round(cols * 0.82), y: wallH + Math.round(rows * 0.22) },
+    // лужа на открытом месте под столом — в ней отражается стажёр (оммаж воде референса)
+    puddle: { x: Math.round(cols * 0.58), y: desk.y1 + Math.round(rows * 0.32), r: PUDDLE_R },
   };
 }
 
@@ -213,7 +190,7 @@ export function drawOffice(buf: CellBuffer, s: OfficeState, t: number): OfficeLa
   const put = (i: number, glyph: number, fg: RGB, bgK = 0.025) => {
     buf.glyph[i] = glyph;
     buf.fg[i] = pack(fg);
-    buf.bg[i] = pack([BG_RGB[0] + fg[0] * bgK, BG_RGB[1] + fg[1] * bgK, BG_RGB[2] + fg[2] * bgK]);
+    buf.bg[i] = glowBg(fg, bgK);
   };
 
   // холодный ночной эмбиент + источники + лунные полосы из окон
@@ -383,13 +360,13 @@ export function drawOffice(buf: CellBuffer, s: OfficeState, t: number): OfficeLa
       const pdx = col - L.puddle.x;
       const pdy = (row - L.puddle.y) * 1.8;
       const pd = Math.hypot(pdx, pdy) / S;
-      if (pd < 7) {
+      if (pd < PUDDLE_R) {
         const ring = Math.sin(pd * 1.6 - t * 3.2);
         const ang = Math.atan2(pdy, pdx);
         const side = Math.abs(Math.cos(ang)) > 0.75 ? (Math.cos(ang) > 0 ? ')' : '(') : Math.abs(Math.cos(ang)) > 0.35 ? (Math.cos(ang) * Math.sin(ang) > 0 ? '\\' : '/') : '~';
-        const k = (1 - pd / 7) * 0.9;
+        const k = (1 - pd / PUDDLE_R) * 0.9;
         // отражение лунного света в воде
-        const glint = hash(col, Math.floor(t * 2), 31) > 0.985;
+        const glint = hash(col, row + Math.floor(t * 2) * 977, 31) > 0.985;
         if (ring > 0.6) put(i, G(side), [0.35 * k + 0.08, 0.6 * k + 0.1, 0.95 * k + 0.15], 0.03);
         else put(i, G(glint ? '*' : ring > 0 ? '~' : '.'), glint ? [0.8, 0.85, 0.9] : [0.08, 0.15, 0.28], 0.02);
         continue;
@@ -430,70 +407,6 @@ export function drawOffice(buf: CellBuffer, s: OfficeState, t: number): OfficeLa
     }
   }
 
-  return drawIntern(buf, s, t, S, lightAt);
-}
-
-/**
- * Стажёр — процедурная фигура (голова, волосы, торс, руки, ноги), объём от света:
- * символ по яркости из плотного ряда, правый бок (к лампе) светлее. Как фигура в референсе.
- */
-function drawIntern(buf: CellBuffer, s: OfficeState, t: number, S: number, lightAt: (x: number, y: number) => RGB): OfficeLabels {
-  const { cols, rows } = buf;
-  const l = lightAt(s.x, s.y);
-  const walking = s.walk > 0;
-  const phase = walking ? Math.sin(t * 9) : 0;
-  const bob = walking ? Math.abs(Math.sin(t * 9)) * 0.3 : Math.sin(t * 1.5) * 0.08; // дыхание на месте
-
-  // Габарит в дизайн-клетках: ширина ±3.5, высота 0..-13 (вверх). Y по вертикали — в «квадратных» единицах (×1.8).
-  const x0 = Math.floor(s.x - 4 * S);
-  const x1 = Math.ceil(s.x + 4 * S);
-  const y0 = Math.floor(s.y - (14 * S) / 1.8);
-  const y1 = Math.ceil(s.y + S);
-
-  for (let row = Math.max(0, y0); row <= Math.min(rows - 1, y1); row++) {
-    for (let col = Math.max(0, x0); col <= Math.min(cols - 1, x1); col++) {
-      const u = (col - s.x) / S; // по горизонтали
-      const v = ((s.y - row) * 1.8) / S - bob; // вверх от ступней
-      let mat: RGB | null = null;
-      let nx = u / 3; // псевдонормаль: -1 левый край, +1 правый
-
-      const legL = Math.abs(u + 0.9 - phase * 0.6 * (v < 4 ? (4 - v) / 4 : 0)) < 0.8 && v >= 0 && v < 4.2;
-      const legR = Math.abs(u - 0.9 + phase * 0.6 * (v < 4 ? (4 - v) / 4 : 0)) < 0.8 && v >= 0 && v < 4.2;
-      const torso = Math.abs(u) < 2.4 - Math.max(0, v - 8.5) * 0.6 && v >= 4 && v < 9.5;
-      const armL = Math.abs(u + 2.9 + phase * 0.4 * ((9 - v) / 4)) < 0.6 && v >= 5 && v < 9;
-      const armR = Math.abs(u - 2.9 - phase * 0.4 * ((9 - v) / 4)) < 0.6 && v >= 5 && v < 9;
-      const hd = Math.hypot(u / 1.7, (v - 11.4) / 1.9);
-      const head = hd < 1;
-
-      if (head) {
-        mat = v > 11.7 || (hd > 0.75 && v > 11) ? [0.2, 0.14, 0.1] : [0.92, 0.74, 0.6]; // волосы / лицо
-        nx = u / 1.7;
-      } else if (torso) mat = [0.8, 0.84, 0.92]; // рубашка
-      else if (armL || armR) {
-        mat = v < 5.6 ? [0.92, 0.74, 0.6] : [0.72, 0.76, 0.86]; // кисть / рукав
-        nx = armR ? 0.9 : -0.9;
-      } else if (legL || legR) mat = v < 0.7 ? [0.12, 0.1, 0.1] : [0.22, 0.26, 0.38]; // ботинки / брюки
-
-      if (!mat) {
-        // тень на полу
-        const sh = Math.hypot(u / 3.4, (v + 0.2) / 0.9);
-        if (sh < 1 && v < 0.6) {
-          const i = row * cols + col;
-          buf.glyph[i] = G(sh < 0.6 ? ':' : '.');
-          buf.fg[i] = pack([0.03, 0.03, 0.05]);
-          buf.bg[i] = BG;
-        }
-        continue;
-      }
-      // Фигура — главный объект кадра: всегда плотные символы и заметный объём, даже в тени.
-      const shade = Math.min(1.5, (l[0] * 0.5 + l[1] * 0.3 + l[2] * 0.2) * (1.1 + 0.5 * nx) + 0.75 - Math.abs(nx) * 0.2);
-      const g = FIGURE[Math.max(4, Math.min(FIGURE.length - 1, Math.floor(shade * 7)))] ?? 0;
-      const i = row * cols + col;
-      buf.glyph[i] = g;
-      buf.fg[i] = pack(mul(mat, shade));
-      buf.bg[i] = pack([BG_RGB[0] + mat[0] * shade * 0.04, BG_RGB[1] + mat[1] * shade * 0.04, BG_RGB[2] + mat[2] * shade * 0.04]);
-    }
-  }
-
-  return { name: { col: s.x, row: s.y - ((15 + bob) * S) / 1.8 }, say: s.say };
+  drawIntern(buf, s, t, S, lightAt(s.x, s.y), L.puddle);
+  return { name: { col: s.x, row: s.y - ((FIGURE_HEIGHT + 1.5) * S * FIGURE_SCALE) / 1.8 }, say: s.say };
 }
