@@ -10,7 +10,7 @@ import type { Platform, ViewportInfo } from '../platform/types';
 import { boot } from './boot';
 import { createRenderHost } from './render-host';
 import { loadSave, writeSave } from './save-store';
-import { createOffice, drawOffice, stepOffice, tapOffice } from './scenes/office';
+import { createOffice, drawOffice, stepOffice, tapOffice, type OfficeLabels } from './scenes/office';
 import { blit, stubSheet } from './stub-sheet';
 
 const BOT_LINK = import.meta.env.VITE_BOT_LINK ?? '';
@@ -62,11 +62,13 @@ async function main(): Promise<void> {
   let zoom = 0;
   // В офисе «лист» — это весь экран: камера не панится.
   const worldSize = (v: ViewportInfo) => (SCENE === 'office' ? [Math.ceil(v.width), Math.ceil(v.height)] : [sheet.cols, sheet.rows]);
+  // Сцена мелкими символами (~115 колонок по ширине, как в референсе); на больших экранах клетка не мельче 3.2 и не крупнее 6 CSS-px.
+  const officeCell = (v: ViewportInfo) => Math.min(6, Math.max(3.2, v.width / 115));
   let view: Viewport = createViewport(1, 1, 1, sheet.cols, sheet.rows);
   let office = createOffice(1, 1);
   const setSize = (v: ViewportInfo) => {
     const [wc, wr] = worldSize(v);
-    view = createViewport(v.width, v.height, v.dpr, wc ?? 1, wr ?? 1, zoom);
+    view = createViewport(v.width, v.height, v.dpr, wc ?? 1, wr ?? 1, zoom, SCENE === 'office' ? officeCell(v) : undefined);
     if (SCENE === 'office') office = createOffice(view.cols, view.rows);
     host.resize(view.pxW, view.pxH, view.cellW, view.cellH);
     render();
@@ -79,21 +81,46 @@ async function main(): Promise<void> {
     audio.play('beep');
   });
 
+  // HTML-слой подписей: ник над головой и реплика — всегда читаемые, независимо от мелкости сцены.
+  const ui = document.querySelector<HTMLDivElement>('#ui');
+  const nameEl = document.createElement('div');
+  nameEl.className = 'label';
+  nameEl.textContent = 'стажёр';
+  const sayEl = document.createElement('div');
+  sayEl.className = 'say';
+  if (SCENE === 'office') ui?.append(nameEl, sayEl);
+  function placeLabels(labels: OfficeLabels): void {
+    const x = (labels.name.col * view.cellW) / view.dpr;
+    const y = (labels.name.row * view.cellH) / view.dpr;
+    nameEl.style.left = `${x}px`;
+    nameEl.style.top = `${y}px`;
+    sayEl.textContent = labels.say ? `«${labels.say}»` : '';
+    sayEl.style.left = `${x}px`;
+    sayEl.style.top = `${y - 16}px`;
+  }
+
   let frame = createBuffer(0, 0);
+  let frameMs = 0;
   function render(): void {
+    const tStart = performance.now();
     const col0 = Math.floor(view.panX / view.cellW);
     const row0 = Math.floor(view.panY / view.cellH);
     if (frame.cols !== view.cols + 1 || frame.rows !== view.rows + 1) frame = createBuffer(view.cols + 1, view.rows + 1);
-    if (SCENE === 'office') drawOffice(frame, office, clock);
+    if (SCENE === 'office') placeLabels(drawOffice(frame, office, clock));
     else blit(sheet, frame, col0, row0);
-    if (!DEV) return host.draw(frame, view.panX - col0 * view.cellW, view.panY - row0 * view.cellH);
+    if (!DEV) {
+      host.draw(frame, view.panX - col0 * view.cellW, view.panY - row0 * view.cellH);
+      frameMs = frameMs * 0.9 + (performance.now() - tStart) * 0.1;
+      return;
+    }
     // ponytail: строка статуса поверх листа — уходит, когда появится UI листа (этап 11).
     const sound = audio.state === 'running' ? 'звук' : 'звук выкл';
-    const info = `${status} · ${host.kind} · ${sound} · сейв r${save.rev} · клетка ${view.cellW}×${view.cellH}px`;
+    const info = `${status} · ${host.kind} · ${sound} · сейв r${save.rev} · клетка ${view.cellW}×${view.cellH}px · ${view.cols}×${view.rows} · кадр ${frameMs.toFixed(1)} мс`;
     // Переносим по словам — на узком экране (iPhone) статус не обрезается.
     const lines = wrap(info, Math.max(8, view.cols - 2));
     lines.forEach((line, i) => putText(frame, 0, view.rows - lines.length + i, ` ${line}`.padEnd(frame.cols), 0x0b0d12, 0x9fd29f));
     host.draw(frame, view.panX - col0 * view.cellW, view.panY - row0 * view.cellH);
+    frameMs = frameMs * 0.9 + (performance.now() - tStart) * 0.1;
   }
 
   // Пан пальцем/мышью; короткое касание без смещения > 8 px — тап по клетке.
@@ -135,7 +162,7 @@ async function main(): Promise<void> {
     const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
     last = now;
     clock += dt;
-    stepOffice(office, dt);
+    stepOffice(office, dt, view.cols);
     render();
     if (!paused) requestAnimationFrame(tick);
   };

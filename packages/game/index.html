@@ -8,6 +8,10 @@
     <style>
       html, body { margin: 0; height: 100%; background: #0b0d12; color: #c8d0c0; overflow: hidden; touch-action: none; }
       canvas { display: block; width: 100%; height: 100%; }
+      /* Текстовый слой поверх сцены: сцена мелкими символами, текст — читаемым моноширинным шрифтом. */
+      #ui { position: fixed; inset: 0; pointer-events: none; font: 12px/1.2 ui-monospace, Menlo, Consolas, monospace; }
+      #ui .label { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; color: #d6dbe0; text-shadow: 0 0 4px #000, 0 0 2px #000; }
+      #ui .say { position: absolute; transform: translate(-50%, -100%); max-width: 70vw; white-space: normal; text-align: center; color: #f2e6b8; text-shadow: 0 0 6px #000, 0 0 2px #000; }
     </style>
     <script>
       // Деплой поверх открытого WebView: старый index.html просит удалённые файлы → одна перезагрузка, потом экран «обнови».
@@ -36,6 +40,7 @@
   </head>
   <body>
     <canvas id="screen"></canvas>
+    <div id="ui"></div>
     <script type="module" src="/src/app/main.ts"></script>
   </body>
 </html>

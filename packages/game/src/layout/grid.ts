@@ -36,8 +36,8 @@ function normalizeDpr(dpr: number): number {
   return Math.max(1, Math.round(dpr * 100) / 100);
 }
 
-function cellSize(zoom: number, dpr: number): { cellW: number; cellH: number } {
-  const css = ZOOM_STEPS[Math.min(Math.max(zoom, 0), ZOOM_STEPS.length - 1)] ?? ZOOM_STEPS[0];
+function cellSize(zoom: number, dpr: number, cellCss?: number): { cellW: number; cellH: number } {
+  const css = cellCss ?? ZOOM_STEPS[Math.min(Math.max(zoom, 0), ZOOM_STEPS.length - 1)] ?? ZOOM_STEPS[0];
   const cellW = Math.max(1, Math.round(css * dpr));
   return { cellW, cellH: Math.round(cellW * CELL_ASPECT) };
 }
@@ -57,11 +57,13 @@ export function createViewport(
   sheetCols: number,
   sheetRows: number,
   zoom = 0,
+  /** Своя ширина клетки в CSS-px вместо ступени зума — для сцены мелкими символами. */
+  cellCss?: number,
 ): Viewport {
   const dpr = normalizeDpr(rawDpr);
   const pxW = Math.round(cssW * dpr);
   const pxH = Math.round(cssH * dpr);
-  const { cellW, cellH } = cellSize(zoom, dpr);
+  const { cellW, cellH } = cellSize(zoom, dpr, cellCss);
   return clampPan({
     pxW,
     pxH,
