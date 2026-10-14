@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d12" />
+    <title>НА ДОРАБОТКУ</title>
+    <style>html,body{color:#c8d0c0;touch-action:none;background:#0b0d12;height:100%;margin:0;overflow:hidden}canvas{width:100%;height:100%;display:block}#ui{pointer-events:none;font:12px/1.2 ui-monospace,Menlo,Consolas,monospace;position:fixed;inset:0}#ui .label{white-space:nowrap;color:#d6dbe0;text-shadow:0 0 4px #000,0 0 2px #000;position:absolute;transform:translate(-50%,-100%)}#ui .say{white-space:normal;text-align:center;color:#f2e6b8;text-shadow:0 0 6px #000,0 0 2px #000;max-width:70vw;position:absolute;transform:translate(-50%,-100%)}</style>
+    <script>
+      // Деплой поверх открытого WebView: старый index.html просит удалённые файлы → одна перезагрузка, потом экран «обнови».
+      (function () {
+        var KEY = 'nd.reloaded';
+        function recover() {
+          try {
+            if (sessionStorage.getItem(KEY)) {
+              document.body.innerHTML = '<p style="font:16px monospace;padding:24px">Вышла новая версия. Закрой и открой игру заново.</p>';
+              return;
+            }
+            sessionStorage.setItem(KEY, '1');
+          } catch (e) {}
+          location.reload();
+        }
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) recover();
+        }, true);
+        window.addEventListener('vite:preloadError', recover);
+        window.addEventListener('load', function () {
+          setTimeout(function () { try { sessionStorage.removeItem(KEY); } catch (e) {} }, 3000);
+        });
+      })();
+    </script>
+    <script type="module" crossorigin src="/NA-DORABOTKU-GAME-/assets/index-CGWEELlY.js"></script>
+  </head>
+  <body>
+    <canvas id="screen"></canvas>
+    <div id="ui"></div>
+  </body>
+</html>
